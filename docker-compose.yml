@@ -1,0 +1,29 @@
+services:
+  dashboard:
+    # `docker compose build` builds the Dockerfile and tags it as the image below.
+    # `docker compose up` (no --build) then just runs that pre-built image instead
+    # of rebuilding every time -- rebuild explicitly (`docker compose build`) only
+    # when app.py/templates/requirements.txt actually change.
+    build: .
+    image: service-dashboard:latest
+    ports:
+      - "5000:5000"
+    environment:
+      # Optional: pin the Flask session-signing key so logins survive a container
+      # restart. If omitted, a random one is generated at startup (fine for dev;
+      # everyone gets logged out on restart).
+      - SECRET_KEY=${SECRET_KEY:-}
+      # Required to use Alerts (Settings -> Alerts): encrypts the per-server
+      # monitoring credentials and the SMTP password at rest in the database.
+      # Generate one once and keep it stable across restarts (changing it makes
+      # anything already saved undecryptable -- you'd need to re-enter it):
+      #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      # Everything else alerting-related (SMTP host, recipients, thresholds,
+      # per-server credentials) is set live from the Alerts page -- only this
+      # one bootstrap key lives outside the database.
+      - CRED_ENCRYPTION_KEY=${CRED_ENCRYPTION_KEY:-}
+    volumes:
+      # Persists the app's user/server-catalog/permissions SQLite database across
+      # restarts. Live SSH connections and passwords still never touch disk.
+      - ./data:/app/data
+    restart: unless-stopped

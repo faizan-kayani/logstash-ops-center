@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alerts &mdash; Logstash Monitoring</title>
+  <link rel="icon" type="image/jpeg" href="/static/logstash-logo.jpg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    {% include "_sidebar.html" %}
+
+    <main class="main-content"><div class="servers-main">
+      <div class="servers-header-row">
+        <div>
+          <h1 class="servers-heading">Alerts</h1>
+          <p class="servers-subheading">
+            Email alerts for Logstash service/API/pipeline issues. Everything on this page is live &mdash;
+            changes apply on the next check cycle, no redeploy needed.
+          </p>
+        </div>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="info-banner {% if category == 'error' %}banner-error{% else %}banner-success{% endif %}" style="margin-bottom: 1rem;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+      {% endwith %}
+
+      {% if not encryption_available %}
+      <div class="info-banner banner-error" style="margin-bottom: 1rem; align-items: flex-start;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top: 2px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        <span>
+          <strong>CRED_ENCRYPTION_KEY is not set.</strong> Monitoring credentials and the SMTP password can't be
+          stored until it is. Generate one and set it as an environment variable on this container, then reload
+          this page:
+          <br><code>python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"</code>
+        </span>
+      </div>
+      {% endif %}
+
+      {% if tab == 'active' %}
+      <div class="servers-card catalog-item" style="margin-bottom: 1.5rem;">
+        <div class="catalog-item-header">
+          <div>
+            <h2 style="margin: 0; font-size: 1.05rem;">Active Alerts</h2>
+            <p class="servers-subheading" style="margin: 0.2rem 0 0;">
+              Currently open or developing issues, across every monitored server.
+            </p>
+          </div>
+          {% if active_alerts %}
+          <span class="status-badge status-failed">
+            {{ active_alerts | selectattr("status", "equalto", "open") | list | length }} open
+          </span>
+          {% else %}
+          <span class="status-badge status-running">All clear</span>
+          {% endif %}
+        </div>
+
+        {% if active_alerts %}
+        <div style="overflow-x: auto; margin-top: 1rem;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Server</th>
+                <th>Type</th>
+                <th>Pipeline</th>
+                <th>Detail</th>
+                <th>Open for</th>
+                <th>Since</th>
+                <th>Last seen</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in active_alerts %}
+              <tr>
+                <td>
+                  {% if a.status == 'open' and a.email_ok == 0 %}
+                  <span class="status-badge status-warning" title="{{ a.email_error }}">OPEN &mdash; EMAIL FAILED</span>
+                  {% elif a.status == 'open' %}
+                  <span class="status-badge status-failed">OPEN</span>
+                  {% else %}
+                  <span class="status-badge status-warning">PENDING ({{ a.consecutive_count }})</span>
+                  {% endif %}
+                </td>
+                <td>{{ a.label or a.host }}</td>
+                <td>{{ {'service': 'Service down', 'api': 'API unresponsive', 'pipeline': 'Pipeline', 'pipeline_schedule': 'Pipeline Schedule', 'es_errors': 'Elasticsearch Errors'}.get(a.scope, a.scope) }}</td>
+                <td>{{ a.pipeline_id or '—' }}</td>
+                <td style="max-width: 280px; white-space: normal;">
+                  {{ a.detail or '—' }}
+                  {% if a.status == 'open' and a.email_ok == 0 %}
+                  <br><span style="color: var(--color-warning);">&#9888; Email not delivered: {{ a.email_error }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ a.open_duration or '—' }}</td>
+                <td>{{ a.opened_at | fmt_time if a.status == 'open' else '—' }}</td>
+                <td>{{ a.last_seen_at | fmt_time }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('admin_resolve_alert', server_id=a.server_id) }}"
+                        onsubmit="return confirm('Mark this alert resolved? If the problem is actually still there, the next check will just reopen it.');">
+                    <input type="hidden" name="scope" value="{{ a.scope }}">
+                    {% if a.pipeline_id %}<input type="hidden" name="pipeline_id" value="{{ a.pipeline_id }}">{% endif %}
+                    <button type="submit" class="btn-icon">Resolve</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="field-hint">
+          "Pending" means the checker has seen the problem but it hasn't yet crossed the required
+          consecutive-check count (event-gap issues only) -- no email has gone out for it yet.
+          "Open — email failed" means the problem is real and confirmed, but the notification email
+          itself didn't send (check your SMTP settings / use "Send test email" above). "Resolve" clears
+          it immediately without waiting for the next check cycle -- if the problem is actually still
+          there, the next cycle just reopens it, so clicking it by mistake is harmless.
+        </p>
+        {% else %}
+        <p class="servers-subheading" style="margin-top: 0.75rem;">
+          No open or developing alerts right now.
+        </p>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if tab == 'email' %}
+      <div class="servers-card catalog-item" style="margin-bottom: 1.5rem;">
+        <div class="catalog-item-header">
+          <div>
+            <h2 style="margin: 0; font-size: 1.05rem;">Email settings</h2>
+            <p class="servers-subheading" style="margin: 0.2rem 0 0;">SMTP server used to send every alert below.</p>
+          </div>
+          <label class="auto-refresh-toggle" style="font-size: 0.88rem; font-weight: 700; color: var(--color-text);">
+            <input type="checkbox" name="enabled" form="alertConfigForm" {% if config.enabled %}checked{% endif %}>
+            Alerting enabled
+          </label>
+        </div>
+
+        <form method="post" action="{{ url_for('admin_update_alerts') }}" id="alertConfigForm" style="margin-top: 1.1rem;">
+          <div class="field-row">
+            <div class="field-group">
+              <label>From name</label>
+              <input type="text" name="from_name" value="{{ config.from_name or '' }}" placeholder="Logstash Monitoring">
+            </div>
+            <div class="field-group">
+              <label>From address</label>
+              <input type="email" name="from_address" value="{{ config.from_address or '' }}" placeholder="noreply-logstash@vitonta.com">
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label>SMTP host</label>
+              <input type="text" name="smtp_host" value="{{ config.smtp_host or '' }}" placeholder="email-smtp.ap-southeast-2.amazonaws.com">
+            </div>
+            <div class="field-group" style="max-width: 140px;">
+              <label>Port</label>
+              <input type="text" name="smtp_port" value="{{ config.smtp_port }}">
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label>SMTP username</label>
+              <input type="text" name="smtp_username" value="{{ config.smtp_username or '' }}" autocomplete="off">
+            </div>
+            <div class="field-group">
+              <label>SMTP password <span class="label-optional">(leave blank to keep current)</span></label>
+              <input type="password" name="smtp_password" autocomplete="new-password"
+                     placeholder="{{ '•••••••• (saved)' if config.smtp_password_enc else 'Not set' }}">
+            </div>
+          </div>
+
+          <label class="auto-refresh-toggle" style="margin-bottom: 1.1rem;">
+            <input type="checkbox" name="smtp_use_tls" {% if config.smtp_use_tls %}checked{% endif %}>
+            Use TLS (STARTTLS)
+          </label>
+
+          <div class="field-group">
+            <label>Default recipients <span class="label-optional">(comma-separated &mdash; used for API/pipeline/schedule alerts, and for service alerts too if Service alert recipients below is blank; used unless a server below has its own override)</span></label>
+            <textarea name="default_recipients" rows="2" placeholder="ops@vitonta.com, oncall@vitonta.com">{{ config.default_recipients or '' }}</textarea>
+          </div>
+
+          <div class="field-group">
+            <label>Service alert recipients <span class="label-optional">(comma-separated &mdash; for Logstash service down/recovered alerts only; leave blank to use Default recipients above)</span></label>
+            <textarea name="service_recipients" rows="2" placeholder="ops@vitonta.com">{{ config.service_recipients or '' }}</textarea>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label>Check interval (minutes)</label>
+              <input type="text" name="check_interval_minutes" value="{{ config.check_interval_minutes }}">
+            </div>
+            <div class="field-group">
+              <label>Event gap threshold</label>
+              <input type="text" name="event_gap_threshold" value="{{ config.event_gap_threshold }}">
+              <p class="field-hint">Pipeline in/out gap above this counts as "events backing up".</p>
+            </div>
+            <div class="field-group">
+              <label>Consecutive checks required</label>
+              <input type="text" name="consecutive_checks_required" value="{{ config.consecutive_checks_required }}">
+              <p class="field-hint">Event-gap alerts only &mdash; service down / pipeline failed / reload failure alert immediately.</p>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label>Default Logstash service name</label>
+              <input type="text" name="default_service_name" value="{{ config.default_service_name }}">
+              <p class="field-hint">Used unless a server below overrides it.</p>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label>Remind every &mdash; Service/API issues (minutes)</label>
+              <input type="text" name="reminder_interval_minutes" value="{{ config.reminder_interval_minutes }}">
+              <p class="field-hint">Service down / API unresponsive. 0 disables reminders for these.</p>
+            </div>
+            <div class="field-group">
+              <label>Remind every &mdash; Pipeline Schedule (minutes)</label>
+              <input type="text" name="reminder_interval_schedule_minutes" value="{{ config.reminder_interval_schedule_minutes }}">
+              <p class="field-hint">Pipelines that missed their expected run. 0 disables reminders for these.</p>
+            </div>
+            <div class="field-group">
+              <label>Remind every &mdash; Event-gap issues (minutes)</label>
+              <input type="text" name="reminder_interval_gap_minutes" value="{{ config.reminder_interval_gap_minutes }}">
+              <p class="field-hint">Events backing up / config reload failures. 0 disables reminders for these.</p>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-icon btn-primary-outline">Save email &amp; alert settings</button>
+        </form>
+
+        <form method="post" action="{{ url_for('admin_send_test_email') }}" class="log-controls" style="margin-top: 1.1rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border);">
+          <input type="email" name="test_recipient" placeholder="Send a test email to&hellip; (blank = default recipients above)">
+          <button type="submit" class="btn-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4 20-7z"></path></svg>
+            Send test email
+          </button>
+        </form>
+        <p class="field-hint">
+          Uses whatever SMTP settings are currently <strong>saved</strong> above &mdash; save first if you just
+          changed something, then test.
+        </p>
+      </div>
+      {% endif %}
+
+      {% if tab == 'monitoring' %}
+      <h2 style="font-size: 1.05rem; margin: 0 0 0.3rem;">Per-server monitoring</h2>
+      <p class="servers-subheading" style="margin: 0 0 1rem;">
+        A dedicated, read-only credential per server so alerts can be checked in the background &mdash;
+        separate from the personal SSH login used elsewhere in this dashboard, and never used to start or
+        stop anything.
+      </p>
+
+      {% if servers %}
+      <div class="catalog-list">
+        {% for server in servers %}
+        <div class="servers-card catalog-item">
+          <div class="catalog-item-header">
+            <div class="server-name-cell">
+              <span class="server-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="1"></rect><rect x="2" y="14" width="20" height="7" rx="1"></rect><line x1="6" y1="6.5" x2="6" y2="6.5"></line><line x1="6" y1="17.5" x2="6" y2="17.5"></line></svg>
+              </span>
+              <div>
+                <div class="server-name-text">{{ server.label or server.host }}</div>
+                <div class="server-connection">{{ server.host }}:{{ server.port }}</div>
+              </div>
+            </div>
+            <span class="status-badge {{ 'status-running' if server.monitor_username else 'status-stopped' }}">
+              {{ 'Monitored' if server.monitor_username else 'Not monitored' }}
+            </span>
+          </div>
+
+          <form method="post" action="{{ url_for('admin_update_server_monitoring', server_id=server.id) }}" style="margin-top: 1rem;">
+            <label class="auto-refresh-toggle monitor-toggle" style="margin-bottom: 1rem;" data-target="mon-fields-{{ server.id }}">
+              <input type="checkbox" name="monitoring_enabled" {% if server.monitor_username %}checked{% endif %}>
+              Monitoring enabled
+            </label>
+            <div id="mon-fields-{{ server.id }}" class="monitor-fields" {% if not server.monitor_username %}style="display: none;"{% endif %}>
+              <div class="field-row">
+                <div class="field-group">
+                  <label>Monitoring username</label>
+                  <input type="text" name="monitor_username" value="{{ server.monitor_username or '' }}">
+                </div>
+                <div class="field-group">
+                  <label>Monitoring password <span class="label-optional">(leave blank to keep current)</span></label>
+                  <input type="password" name="monitor_password" autocomplete="new-password"
+                         placeholder="{{ '•••••••• (saved)' if server.monitor_password_enc else 'Not set' }}">
+                </div>
+              </div>
+              <div class="field-row">
+                <div class="field-group">
+                  <label>Service name override <span class="label-optional">(optional)</span></label>
+                  <input type="text" name="service_name_override" value="{{ server.service_name_override or '' }}"
+                         placeholder="{{ config.default_service_name }}">
+                </div>
+                <div class="field-group">
+                  <label>Alert recipients override <span class="label-optional">(optional)</span></label>
+                  <input type="text" name="alert_recipients_override" value="{{ server.alert_recipients_override or '' }}"
+                         placeholder="Uses default recipients above if blank">
+                </div>
+              </div>
+            </div>
+            <button type="submit" class="btn-icon btn-primary-outline">Save</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="servers-subheading">No servers in the catalog yet &mdash; add one from Server Catalog first.</p>
+      {% endif %}
+      {% endif %}
+
+      {% if tab == 'schedules' %}
+      <h2 style="font-size: 1.05rem; margin: 0 0 0.3rem;">Pipeline Schedules</h2>
+      <p class="servers-subheading" style="margin: 0 0 1rem;">
+        Read-only: watches each pipeline's own output counter and alerts if it goes quiet longer than the
+        interval you set below &mdash; nothing here is ever written to Logstash or the target server. Pipelines
+        appear automatically as the background checker observes them; leave the interval blank for any
+        pipeline you don't want watched for staleness.
+      </p>
+
+      {% if servers %}
+      <div class="filter-toolbar" style="margin-bottom: 1.25rem;">
+        <span class="filter-toolbar-label">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="1"></rect><rect x="2" y="14" width="20" height="7" rx="1"></rect><line x1="6" y1="6.5" x2="6" y2="6.5"></line><line x1="6" y1="17.5" x2="6" y2="17.5"></line></svg>
+          Server
+        </span>
+        <select onchange="window.location.href = '{{ url_for('admin_alerts_schedules') }}?server=' + this.value">
+          {% for server in servers %}
+          <option value="{{ server.id }}" {% if server.id == selected_server_id %}selected{% endif %}>
+            {{ server.label or server.host }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {% if schedules %}
+      <div class="search-wrap" style="max-width: 360px;">
+        <span class="search-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </span>
+        <input type="text" id="scheduleSearch" placeholder="Search pipelines&hellip;">
+      </div>
+      <form method="post" action="{{ url_for('admin_update_pipeline_schedules', server_id=selected_server_id) }}">
+        <div class="servers-card catalog-item" style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Pipeline</th>
+                <th>Last activity</th>
+                <th>Expected every</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="scheduleRows">
+              {% for s in schedules %}
+              <tr class="schedule-row" data-search="{{ s.pipeline_id | lower }}">
+                <td>{{ s.pipeline_id }}</td>
+                <td style="color: var(--color-muted);">{{ s.last_activity_label }}</td>
+                <td>
+                  <div class="schedule-interval">
+                    <input type="text" name="value_{{ s.pipeline_id }}" value="{{ s.expected_value or '' }}"
+                           placeholder="&mdash;" inputmode="numeric">
+                    <span class="schedule-interval-divider"></span>
+                    <select name="unit_{{ s.pipeline_id }}">
+                      {% for unit in schedule_units %}
+                      <option value="{{ unit }}" {% if s.expected_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </td>
+                <td>
+                  <button type="submit" formaction="{{ url_for('admin_remove_pipeline_schedule', server_id=selected_server_id, pipeline_id=s.pipeline_id) }}"
+                          class="btn-icon btn-danger-outline"
+                          onclick="return confirm('Remove {{ s.pipeline_id }} from this list? (Only removes it here -- does nothing on the server. It reappears automatically if the checker sees it again.)');">
+                    Remove
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <p id="scheduleNoMatches" class="servers-subheading" style="display: none; margin: 0.85rem 0 0;">
+            No pipelines match your search.
+          </p>
+        </div>
+        <button type="submit" class="btn-icon btn-primary-outline" style="margin-top: 0.75rem;">Save schedules</button>
+      </form>
+      {% else %}
+      <p class="servers-subheading">
+        No pipelines observed yet for this server. Make sure Alerting is enabled and this server has a
+        monitoring credential set (Per-server monitoring tab) &mdash; pipelines appear here after the
+        background checker completes its first cycle.
+      </p>
+      {% endif %}
+      {% else %}
+      <p class="servers-subheading">No servers in the catalog yet &mdash; add one from Server Catalog first.</p>
+      {% endif %}
+      {% endif %}
+    </div></main>
+  </div>
+
+  <script>
+    const scheduleSearch = document.getElementById("scheduleSearch");
+    if (scheduleSearch) {
+      const scheduleRows = document.querySelectorAll(".schedule-row");
+      const noMatches = document.getElementById("scheduleNoMatches");
+      scheduleSearch.addEventListener("input", () => {
+        const query = scheduleSearch.value.trim().toLowerCase();
+        let visible = 0;
+        scheduleRows.forEach((row) => {
+          const match = !query || row.dataset.search.includes(query);
+          row.classList.toggle("d-none", !match);
+          if (match) visible++;
+        });
+        if (noMatches) noMatches.style.display = visible === 0 ? "" : "none";
+      });
+    }
+
+    // Per-server Monitoring tab: "Monitoring enabled" toggle just shows/hides
+    // the credential fields -- actual enable/disable happens server-side on
+    // Save (see admin_update_server_monitoring), this is purely so the form
+    // doesn't show a username/password box that's about to be ignored.
+    document.querySelectorAll(".monitor-toggle input[type=checkbox]").forEach((toggle) => {
+      const target = document.getElementById(toggle.closest(".monitor-toggle").dataset.target);
+      if (!target) return;
+      toggle.addEventListener("change", () => {
+        target.style.display = toggle.checked ? "" : "none";
+      });
+    });
+  </script>
+</body>
+</html>

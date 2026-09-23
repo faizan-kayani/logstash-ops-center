@@ -1,0 +1,153 @@
+<nav class="sidebar">
+  <div class="sidebar-brand">
+    <span class="icon">
+      <img src="/static/logstash-logo.jpg" alt="Logstash">
+    </span>
+    Logstash Monitoring
+  </div>
+
+  <div class="sidebar-nav">
+    {% if not server_id %}
+    <a class="nav-item {{ 'active' if active == 'servers' else '' }}" href="{{ url_for('list_servers') }}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"></rect><rect x="3" y="10" width="18" height="4" rx="1"></rect><rect x="3" y="16" width="18" height="4" rx="1"></rect></svg>
+      All Servers
+    </a>
+    {% endif %}
+
+    {% if server_id %}
+    <button class="nav-item active" data-view="services">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      Start / Stop / Restart Services
+    </button>
+    <button class="nav-item" data-view="serviceHistory">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"></path><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"></path><path d="M12 7v5l4 2"></path></svg>
+      Start / Stop / Restart History
+    </button>
+    {% if can_view_pipeline_status %}
+    <button class="nav-item" data-view="logstashStatus">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+      Pipeline Status
+    </button>
+    {% endif %}
+    {% if can_view_pipeline_errors %}
+    <button class="nav-item" data-view="logstashErrors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+      Reload / Config Errors
+    </button>
+    {% endif %}
+    {% if can_view_pipeline_es_errors %}
+    <button class="nav-item" data-view="logstashEsErrors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h4l2 6 4-12 2 6h4"></path></svg>
+      Elasticsearch Errors
+    </button>
+    {% endif %}
+    {% if can_view_pipeline_logs %}
+    <button class="nav-item" data-view="logstashLogs">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><line x1="10" y1="9" x2="8" y2="9"></line></svg>
+      Pipeline Logs
+    </button>
+    {% endif %}
+    {% endif %}
+
+    {% if nav_user and (nav_user.role == 'admin' or nav_user.can_view_excel_sheet) %}
+    <a class="nav-item {{ 'active' if active == 'excel' else '' }}" href="{{ url_for('excel_sheets_list') }}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+      Excel Sheet
+    </a>
+    {% endif %}
+
+    {% if nav_user and nav_user.role == 'admin' %}
+    <div class="nav-section-label">Settings</div>
+    <a class="nav-item nav-sub-item {{ 'active' if settings_tab == 'users' else '' }}" href="{{ url_for('admin_users') }}">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+      Users
+    </a>
+    <a class="nav-item nav-sub-item {{ 'active' if settings_tab == 'servers' else '' }}" href="{{ url_for('admin_servers') }}">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="1"></rect><rect x="2" y="14" width="20" height="7" rx="1"></rect><line x1="6" y1="6.5" x2="6" y2="6.5"></line><line x1="6" y1="17.5" x2="6" y2="17.5"></line></svg>
+      Server Catalog
+    </a>
+    <a class="nav-item nav-sub-item {{ 'active' if settings_tab == 'alerts' else '' }}" href="{{ url_for('admin_alerts') }}">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+      Alerts
+      {% if open_alert_count %}
+      <span class="nav-badge">{{ open_alert_count }}</span>
+      {% endif %}
+    </a>
+    <a class="nav-item nav-sub-item nav-sub-sub-item {{ 'active' if alerts_tab == 'active' else '' }}" href="{{ url_for('admin_alerts') }}">
+      Active Alerts
+    </a>
+    <a class="nav-item nav-sub-item nav-sub-sub-item {{ 'active' if alerts_tab == 'email' else '' }}" href="{{ url_for('admin_alerts_email') }}">
+      Email settings
+    </a>
+    <a class="nav-item nav-sub-item nav-sub-sub-item {{ 'active' if alerts_tab == 'monitoring' else '' }}" href="{{ url_for('admin_alerts_monitoring') }}">
+      Per-server monitoring
+    </a>
+    <a class="nav-item nav-sub-item nav-sub-sub-item {{ 'active' if alerts_tab == 'schedules' else '' }}" href="{{ url_for('admin_alerts_schedules') }}">
+      Pipeline Schedules
+    </a>
+    {% endif %}
+
+    {% if nav_user and nav_user.role != 'admin' and nav_user.can_view_active_alerts %}
+    <div class="nav-section-label">Alerts</div>
+    <a class="nav-item" href="{{ url_for('admin_alerts') }}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+      Active Alerts
+      {% if open_alert_count %}
+      <span class="nav-badge">{{ open_alert_count }}</span>
+      {% endif %}
+    </a>
+    {% endif %}
+  </div>
+
+  <div class="sidebar-footer">
+    {% if server_id %}
+    <div class="conn-info">
+      {% if label %}<strong>{{ label }}</strong><br>{{ username }}@{{ host }}
+      {% else %}Connected to<br><strong>{{ username }}@{{ host }}</strong>{% endif %}
+      {% if access_note %}<br><span class="view-only-tag">{{ access_note }}</span>{% endif %}
+    </div>
+    <form method="post" action="{{ url_for('disconnect_server', server_id=server_id) }}"
+          onsubmit="return confirm('Disconnect from {{ host }}? You can reconnect from the servers list.');">
+      <button type="submit" class="btn-icon btn-danger-outline" style="width: 100%; justify-content: center; margin-top: 0.6rem;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        Disconnect
+      </button>
+    </form>
+    {% endif %}
+
+    <div class="sidebar-account">
+      {% if nav_user %}
+        {% set initial = nav_user.username[0] | upper %}
+        {% if nav_user.role == 'admin' %}
+        <a href="{{ url_for('account') }}" class="sidebar-account-identity" title="{{ nav_user.username }} &mdash; change password">
+          <span class="sidebar-account-avatar">{{ initial }}</span>
+          <span class="sidebar-account-info">
+            <span class="sidebar-account-email">{{ nav_user.username }}</span>
+            <span class="sidebar-account-role">Admin &middot; change password</span>
+          </span>
+        </a>
+        {% else %}
+        <div class="sidebar-account-identity is-static" title="{{ nav_user.username }} &mdash; ask an admin to change your password">
+          <span class="sidebar-account-avatar">{{ initial }}</span>
+          <span class="sidebar-account-info">
+            <span class="sidebar-account-email">{{ nav_user.username }}</span>
+            <span class="sidebar-account-role">Member</span>
+          </span>
+        </div>
+        {% endif %}
+      {% endif %}
+
+      <form method="post" action="{{ url_for('logout') }}" class="sidebar-logout-form">
+        <button type="submit" class="sidebar-logout-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          Log out
+        </button>
+      </form>
+    </div>
+
+    <div class="sidebar-powered-by">
+      <span class="sidebar-powered-dot"></span>
+      Powered by <strong>F3 Devops Team</strong>
+    </div>
+  </div>
+</nav>

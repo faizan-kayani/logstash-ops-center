@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Server Catalog &mdash; Logstash Monitoring</title>
+  <link rel="icon" type="image/jpeg" href="/static/logstash-logo.jpg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    {% include "_sidebar.html" %}
+
+    <main class="main-content"><div class="servers-main">
+      <div class="servers-header-row">
+        <div>
+          <h1 class="servers-heading">Server Catalog</h1>
+          <p class="servers-subheading">Add servers and control who can access them.</p>
+        </div>
+        <a href="{{ url_for('admin_new_server') }}" class="btn-filled-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Add server
+        </a>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="info-banner {% if category == 'error' %}banner-error{% else %}banner-success{% endif %}" style="margin-bottom: 1rem;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+      {% endwith %}
+
+      {% if servers %}
+      <div class="catalog-list">
+        {% for entry in servers %}
+        {% set server = entry.row %}
+        <div class="servers-card catalog-item">
+          <div class="catalog-item-header">
+            <div class="server-name-cell">
+              <span class="server-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="1"></rect><rect x="2" y="14" width="20" height="7" rx="1"></rect><line x1="6" y1="6.5" x2="6" y2="6.5"></line><line x1="6" y1="17.5" x2="6" y2="17.5"></line></svg>
+              </span>
+              <div>
+                <div class="server-name-text">{{ server.label or server.host }}</div>
+                <div class="server-connection">{{ server.username }}@{{ server.host }}:{{ server.port }}</div>
+              </div>
+            </div>
+            <form method="post" action="{{ url_for('admin_delete_server', server_id=server.id) }}"
+                  onsubmit="return confirm('Remove {{ server.label or server.host }} from the catalog? This revokes everyone\'s access.');">
+              <button type="submit" class="btn-icon btn-danger-outline">Remove</button>
+            </form>
+          </div>
+
+          <details class="access-details">
+            <summary>Manage access {% if entry.permissions %}&middot; {{ entry.permissions|length }} user{{ "s" if entry.permissions|length != 1 else "" }} granted{% endif %}</summary>
+
+            {% if users %}
+            <form method="post" action="{{ url_for('admin_set_permissions', server_id=server.id) }}" class="access-form">
+              <table class="access-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>View services &amp; logs</th>
+                    <th>Start / stop everything</th>
+                    <th>Or just these services</th>
+                    <th>Pipeline Status</th>
+                    <th>Reload / Config Errors</th>
+                    <th>Elasticsearch Errors</th>
+                    <th>Pipeline Logs</th>
+                    <th>Full access</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for u in users %}
+                  {% set perm = entry.permissions | selectattr("user_id", "equalto", u.id) | first %}
+                  {% set has_full_control = perm and perm.can_control %}
+                  <tr class="access-row" data-row-id="{{ server.id }}_{{ u.id }}">
+                    <td>{{ u.username }}</td>
+                    <td><input type="checkbox" name="view_{{ u.id }}" class="grant-checkbox" {% if perm and perm.can_view %}checked{% endif %}></td>
+                    <td>
+                      <input type="checkbox" name="control_{{ u.id }}" class="control-checkbox grant-checkbox"
+                             data-target="services_{{ server.id }}_{{ u.id }}" {% if has_full_control %}checked{% endif %}>
+                    </td>
+                    <td>
+                      <div class="service-picker" data-server-id="{{ server.id }}">
+                        <div class="service-picker-row-main">
+                          <input type="text" name="services_{{ u.id }}" id="services_{{ server.id }}_{{ u.id }}"
+                                 class="service-grant-input {{ 'is-overridden' if has_full_control else '' }}"
+                                 {% if has_full_control %}readonly title="Ignored while &quot;Start / stop everything&quot; is checked -- uncheck it to use this list instead."{% endif %}
+                                 placeholder="e.g. MyService.service, nginx.service"
+                                 value="{{ entry.service_grants.get(u.id, []) | join(', ') }}">
+                          <button type="button" class="btn-icon service-picker-toggle">Browse&hellip;</button>
+                        </div>
+                        <div class="service-picker-panel d-none">
+                          <input type="text" class="service-picker-search" placeholder="Filter services...">
+                          <div class="service-picker-list">Loading services&hellip;</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td><input type="checkbox" name="pipeline_status_{{ u.id }}" class="grant-checkbox" {% if perm and perm.can_view_pipeline_status %}checked{% endif %}></td>
+                    <td><input type="checkbox" name="pipeline_errors_{{ u.id }}" class="grant-checkbox" {% if perm and perm.can_view_pipeline_errors %}checked{% endif %}></td>
+                    <td><input type="checkbox" name="pipeline_es_errors_{{ u.id }}" class="grant-checkbox" {% if perm and perm.can_view_pipeline_es_errors %}checked{% endif %}></td>
+                    <td><input type="checkbox" name="pipeline_logs_{{ u.id }}" class="grant-checkbox" {% if perm and perm.can_view_pipeline_logs %}checked{% endif %}></td>
+                    <td><input type="checkbox" class="select-all-checkbox" title="Tick every box in this row"></td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              <p class="field-hint" style="margin-top: 0.6rem;">
+                "Start/stop everything" grants control over every service on this server. Leave that
+                unchecked and list exact systemd unit names (comma or newline separated) to grant
+                start/stop for just those &mdash; the user keeps whatever "View" access is set above.
+                Pipeline Status / Reload-Config Errors / Elasticsearch Errors / Pipeline Logs are
+                independent &mdash; none of them are implied by "View services &amp; logs", so tick each
+                page a user should see.
+                "Full access" is just a shortcut that ticks every box in that row; it does not make the
+                user an Admin (that's set from Users).
+              </p>
+              <button type="submit" class="btn-icon btn-primary-outline" style="margin-top: 0.5rem;">Save access</button>
+            </form>
+            {% else %}
+            <p class="servers-subheading" style="margin-top: 0.75rem;">No other users yet &mdash; add one from Users first.</p>
+            {% endif %}
+          </details>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="servers-empty">
+        <div class="servers-empty-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+        </div>
+        <p>No servers in the catalog yet.</p>
+        <a href="{{ url_for('admin_new_server') }}" class="btn-primary-full" style="display: inline-block; width: auto; padding: 0.65rem 1.5rem; text-decoration: none;">Add your first server</a>
+      </div>
+      {% endif %}
+    </div></main>
+  </div>
+
+  <script>
+    // Visually grey out (and lock) the specific-services field while "Start/stop
+    // everything" is checked, since the server ignores it in that case -- makes
+    // that precedence obvious instead of silently "not working".
+    document.querySelectorAll(".control-checkbox").forEach((checkbox) => {
+      const target = document.getElementById(checkbox.dataset.target);
+      if (!target) return;
+      const sync = () => {
+        target.readOnly = checkbox.checked;
+        target.classList.toggle("is-overridden", checkbox.checked);
+      };
+      checkbox.addEventListener("change", sync);
+      sync();
+    });
+
+    // "Browse..." lets an admin tick services from that server's live list instead
+    // of typing exact unit names. Requires the admin to have opened that server at
+    // least once this session (same live-connection model as everything else here);
+    // falls back to manual typing in the text field if it hasn't been / can't load.
+    const serviceListCache = {};
+
+    async function loadServiceList(serverId) {
+      if (serviceListCache[serverId]) return serviceListCache[serverId];
+      const res = await fetch(`/api/servers/${serverId}/services`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load services");
+      serviceListCache[serverId] = data.services;
+      return data.services;
+    }
+
+    function currentNames(input) {
+      return new Set(input.value.split(/[,\n]+/).map((s) => s.trim()).filter(Boolean));
+    }
+
+    function syncInputFromPanel(listEl, input, services) {
+      const liveNames = new Set(services.map((s) => s.name));
+      const customNames = [...currentNames(input)].filter((n) => !liveNames.has(n));
+      const checkedNames = [...listEl.querySelectorAll('input[type="checkbox"]:checked')].map((c) => c.dataset.name);
+      input.value = [...customNames, ...checkedNames].join(", ");
+    }
+
+    function renderPicker(listEl, services, input, filter) {
+      const query = (filter || "").trim().toLowerCase();
+      const selected = currentNames(input);
+      const filtered = services.filter((s) => !query || s.name.toLowerCase().includes(query));
+
+      listEl.innerHTML = "";
+      if (!filtered.length) {
+        listEl.innerHTML = '<div class="service-picker-empty">No matching services.</div>';
+        return;
+      }
+      filtered.forEach((s) => {
+        const row = document.createElement("label");
+        row.className = "service-picker-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.dataset.name = s.name;
+        cb.checked = selected.has(s.name);
+        cb.addEventListener("change", () => syncInputFromPanel(listEl, input, services));
+        row.append(cb, document.createTextNode(" " + s.name));
+        listEl.appendChild(row);
+      });
+    }
+
+    document.querySelectorAll(".service-picker-toggle").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const wrapper = btn.closest(".service-picker");
+        const panel = wrapper.querySelector(".service-picker-panel");
+        const input = wrapper.querySelector(".service-grant-input");
+        const listEl = panel.querySelector(".service-picker-list");
+        const searchInput = panel.querySelector(".service-picker-search");
+        const serverId = wrapper.dataset.serverId;
+
+        const wasOpen = !panel.classList.contains("d-none");
+        document.querySelectorAll(".service-picker-panel").forEach((p) => p.classList.add("d-none"));
+        if (wasOpen) return;
+        panel.classList.remove("d-none");
+
+        if (input.readOnly) {
+          listEl.innerHTML = '<div class="service-picker-empty">Uncheck "Start / stop everything" first.</div>';
+          return;
+        }
+
+        listEl.textContent = "Loading services...";
+        try {
+          const services = await loadServiceList(serverId);
+          renderPicker(listEl, services, input);
+          searchInput.oninput = () => renderPicker(listEl, services, input, searchInput.value);
+        } catch (err) {
+          listEl.innerHTML = `<div class="service-picker-empty">${err.message}. Open this server once to load its live list, or type exact service names in the box above.</div>`;
+        }
+      });
+    });
+
+    // "Full access" per-row shortcut: ticks (or clears) every grant checkbox in
+    // that row in one click, and reflects back to checked/unchecked automatically
+    // if every box in the row already happens to match. Purely a convenience --
+    // it isn't stored anywhere itself, it's fully derived from the other boxes.
+    document.querySelectorAll(".access-row").forEach((row) => {
+      const selectAll = row.querySelector(".select-all-checkbox");
+      const grantCheckboxes = () => Array.from(row.querySelectorAll(".grant-checkbox"));
+
+      const syncSelectAllFromGrants = () => {
+        selectAll.checked = grantCheckboxes().every((cb) => cb.checked);
+      };
+
+      selectAll.addEventListener("change", () => {
+        grantCheckboxes().forEach((cb) => {
+          if (cb.checked !== selectAll.checked) {
+            cb.checked = selectAll.checked;
+            // Fires the existing .control-checkbox listener above too, so the
+            // service-picker text field's readonly/greyed state stays in sync.
+            cb.dispatchEvent(new Event("change"));
+          }
+        });
+      });
+
+      grantCheckboxes().forEach((cb) => cb.addEventListener("change", syncSelectAllFromGrants));
+      syncSelectAllFromGrants(); // reflect whatever was already saved on page load
+    });
+  </script>
+</body>
+</html>

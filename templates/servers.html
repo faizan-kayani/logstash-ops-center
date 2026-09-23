@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Servers &mdash; Logstash Monitoring</title>
+  <link rel="icon" type="image/jpeg" href="/static/logstash-logo.jpg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    {% include "_sidebar.html" %}
+
+    <main class="main-content"><div class="servers-main">
+      {% if servers %}
+      <div class="servers-header-row">
+        <div>
+          <h1 class="servers-heading">All Servers</h1>
+          <p class="servers-subheading">
+            {% if user.role == 'admin' %}All servers in the catalog.{% else %}Servers you have access to.{% endif %}
+          </p>
+        </div>
+        <div class="search-wrap servers-search">
+          <span class="search-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          </span>
+          <input type="text" id="serverSearch" placeholder="Search servers...">
+        </div>
+      </div>
+
+      <div class="servers-card">
+        <div style="overflow-x: auto;">
+          <table class="servers-table">
+            <thead>
+              <tr>
+                <th>Server</th>
+                <th>Connection</th>
+                <th>Status</th>
+                <th>Access</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="serverRows">
+              {% for server in servers %}
+              <tr class="server-row" data-search="{{ (server.label or '') ~ ' ' ~ server.host ~ ' ' ~ server.username }}">
+                <td>
+                  <a class="server-name-cell" href="{{ url_for('server_dashboard', server_id=server.id) }}">
+                    <span class="server-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="1"></rect><rect x="2" y="14" width="20" height="7" rx="1"></rect><line x1="6" y1="6.5" x2="6" y2="6.5"></line><line x1="6" y1="17.5" x2="6" y2="17.5"></line></svg>
+                    </span>
+                    <span class="server-name-text">{{ server.label or server.host }}</span>
+                  </a>
+                </td>
+                <td class="server-connection">{{ server.username }}@{{ server.host }}:{{ server.port }}</td>
+                <td>
+                  {% if server.connected %}
+                  <span class="server-status-badge status-connected">Connected</span>
+                  {% else %}
+                  <span class="server-status-badge status-offline">Not connected</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if server.can_control %}
+                  <span class="server-status-badge status-control">Start/Stop</span>
+                  {% else %}
+                  <span class="server-status-badge status-view">View only</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <a href="{{ url_for('server_dashboard', server_id=server.id) }}" class="btn-icon btn-primary-outline">Open</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="servers-count" id="serversCount">{{ servers|length }} server{{ "s" if servers|length != 1 else "" }}</div>
+      </div>
+      {% else %}
+      <div class="servers-empty">
+        <div class="servers-empty-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+        </div>
+        {% if user.role == 'admin' %}
+        <p>No servers in the catalog yet.</p>
+        <a href="{{ url_for('admin_new_server') }}" class="btn-primary-full" style="display: inline-block; width: auto; padding: 0.65rem 1.5rem; text-decoration: none;">Add your first server</a>
+        {% else %}
+        <p>No servers have been shared with your account yet. Ask an admin to grant access.</p>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div></main>
+  </div>
+
+  <script>
+    const searchInput = document.getElementById("serverSearch");
+    const rows = document.querySelectorAll(".server-row");
+    const countLabel = document.getElementById("serversCount");
+    const totalCount = rows.length;
+
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        const query = searchInput.value.trim().toLowerCase();
+        let visible = 0;
+        rows.forEach((row) => {
+          const match = !query || row.dataset.search.toLowerCase().includes(query);
+          row.classList.toggle("d-none", !match);
+          if (match) visible++;
+        });
+        countLabel.textContent = query
+          ? `${visible} of ${totalCount} servers`
+          : `${totalCount} server${totalCount !== 1 ? "s" : ""}`;
+      });
+    }
+  </script>
+</body>
+</html>

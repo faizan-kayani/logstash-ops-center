@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Users &mdash; Logstash Monitoring</title>
+  <link rel="icon" type="image/jpeg" href="/static/logstash-logo.jpg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    {% include "_sidebar.html" %}
+
+    <main class="main-content"><div class="servers-main">
+      <div class="servers-header-row">
+        <div>
+          <h1 class="servers-heading">Users</h1>
+          <p class="servers-subheading">Accounts that can sign in to this dashboard.</p>
+        </div>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="info-banner {% if category == 'error' %}banner-error{% else %}banner-success{% endif %}" style="margin-bottom: 1rem;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+      {% endwith %}
+
+      <div class="servers-card" style="padding: 1.4rem 1.5rem; margin-bottom: 1.5rem;">
+        <h2 class="panel-header" style="margin: 0 0 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted);">Add new user</h2>
+        <form method="post" action="{{ url_for('admin_new_user') }}" class="add-user-form">
+          <div class="field-group" style="margin-bottom: 0;">
+            <label>Username</label>
+            <input type="text" name="username" placeholder="jane" required>
+          </div>
+          <div class="field-group" style="margin-bottom: 0;">
+            <label>Password</label>
+            <input type="password" name="password" placeholder="At least 8 characters" minlength="8" required>
+          </div>
+          <div class="field-group" style="margin-bottom: 0;">
+            <label>Role</label>
+            <select name="role">
+              <option value="user" selected>User (restricted &mdash; grant per server)</option>
+              <option value="admin">Admin (full access)</option>
+            </select>
+          </div>
+          <button type="submit" class="btn-filled-primary add-user-submit">Add user</button>
+        </form>
+      </div>
+
+      <div class="servers-card">
+        <div style="overflow-x: auto;">
+          <table class="servers-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Role</th>
+                <th title="View-only access to the Active Alerts panel across every monitored server -- Email settings and Per-server monitoring stay Admin-only regardless of this.">Active Alerts</th>
+                <th title="Access to the Excel Sheet workspace -- a shared spreadsheet unrelated to any server.">Excel Sheet</th>
+                <th>Created</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td class="server-name-text">{{ u.username }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('admin_set_role', user_id=u.id) }}" style="display: inline;">
+                    <select name="role" onchange="this.form.submit()" {% if u.id == current_id %}disabled{% endif %}
+                            class="role-select {{ 'role-admin' if u.role == 'admin' else 'role-user' }}">
+                      <option value="user" {% if u.role == 'user' %}selected{% endif %}>User</option>
+                      <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>Admin</option>
+                    </select>
+                  </form>
+                </td>
+                <td>
+                  {% if u.role == 'admin' %}
+                  <span style="color: var(--color-muted);" title="Admins already see everything">&mdash;</span>
+                  {% else %}
+                  <form method="post" action="{{ url_for('admin_set_alerts_access', user_id=u.id) }}" style="display: inline;">
+                    <input type="checkbox" name="can_view_active_alerts" onchange="this.form.submit()"
+                           {% if u.can_view_active_alerts %}checked{% endif %}>
+                  </form>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if u.role == 'admin' %}
+                  <span style="color: var(--color-muted);" title="Admins already see everything">&mdash;</span>
+                  {% else %}
+                  <form method="post" action="{{ url_for('admin_set_excel_access', user_id=u.id) }}" style="display: inline;">
+                    <input type="checkbox" name="can_view_excel_sheet" onchange="this.form.submit()"
+                           {% if u.can_view_excel_sheet %}checked{% endif %}>
+                  </form>
+                  {% endif %}
+                </td>
+                <td class="server-connection">{{ u.created_at | int | format_ts }}</td>
+                <td class="text-end">
+                  <div class="server-actions">
+                    <button type="button" class="btn-icon reset-password-trigger"
+                            data-action="{{ url_for('admin_reset_password', user_id=u.id) }}"
+                            data-username="{{ u.username }}">
+                      Reset password
+                    </button>
+                    <form method="post" action="{{ url_for('admin_delete_user', user_id=u.id) }}"
+                          onsubmit="return confirm('Delete user {{ u.username }}? This cannot be undone.');">
+                      <button type="submit" class="btn-icon btn-danger-outline" {% if u.id == current_id %}disabled{% endif %}>Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="servers-count">{{ users|length }} user{{ "s" if users|length != 1 else "" }}</div>
+      </div>
+    </div></main>
+  </div>
+
+  <dialog id="resetPasswordDialog" class="modal-dialog">
+    <form method="post" id="resetPasswordForm" class="modal-form">
+      <h3>Reset password for <span id="resetPasswordUsername"></span></h3>
+      <div class="field-group">
+        <label>New password</label>
+        <input type="password" name="new_password" id="resetNewPassword" minlength="8" autocomplete="new-password" required>
+      </div>
+      <div class="field-group" style="margin-bottom: 0;">
+        <label>Confirm password</label>
+        <input type="password" name="confirm_password" id="resetConfirmPassword" minlength="8" autocomplete="new-password" required>
+      </div>
+      <p class="login-error d-none" id="resetPasswordError" style="margin-top: 1rem; margin-bottom: 0;"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn-icon" id="resetPasswordCancel">Cancel</button>
+        <button type="submit" class="btn-filled-primary">Set new password</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const resetDialog = document.getElementById("resetPasswordDialog");
+    const resetForm = document.getElementById("resetPasswordForm");
+    const resetUsername = document.getElementById("resetPasswordUsername");
+    const resetError = document.getElementById("resetPasswordError");
+    const resetNewPassword = document.getElementById("resetNewPassword");
+    const resetConfirmPassword = document.getElementById("resetConfirmPassword");
+
+    document.querySelectorAll(".reset-password-trigger").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        resetForm.action = btn.dataset.action;
+        resetUsername.textContent = btn.dataset.username;
+        resetForm.reset();
+        resetError.classList.add("d-none");
+        resetDialog.showModal();
+      });
+    });
+
+    document.getElementById("resetPasswordCancel").addEventListener("click", () => resetDialog.close());
+
+    resetForm.addEventListener("submit", (e) => {
+      if (resetNewPassword.value.length < 8) {
+        e.preventDefault();
+        resetError.textContent = "Password must be at least 8 characters.";
+        resetError.classList.remove("d-none");
+      } else if (resetNewPassword.value !== resetConfirmPassword.value) {
+        e.preventDefault();
+        resetError.textContent = "Passwords do not match.";
+        resetError.classList.remove("d-none");
+      }
+    });
+  </script>
+</body>
+</html>

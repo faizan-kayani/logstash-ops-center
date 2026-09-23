@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add a Server &mdash; Logstash Monitoring</title>
+  <link rel="icon" type="image/jpeg" href="/static/logstash-logo.jpg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-card">
+      <a href="{{ url_for('admin_servers') }}" class="back-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        Back to server catalog
+      </a>
+
+      <div class="login-icon">
+        <img src="/static/logstash-logo.jpg" alt="Logstash">
+      </div>
+      <h1>Add a server</h1>
+      <p class="login-subheading">Adds it to the shared catalog &mdash; grant access to users from there</p>
+
+      {% if error %}
+      <div class="login-error">{{ error }}</div>
+      {% endif %}
+
+      <form method="post">
+        <div class="field-group">
+          <label>Server name <span class="label-optional">(optional)</span></label>
+          <input type="text" name="label" placeholder="e.g. Production API"
+                 value="{{ form.get('label', '') }}">
+        </div>
+
+        <div class="field-row">
+          <div class="field-group" style="flex: 2.5;">
+            <label>Host / IP address</label>
+            <input type="text" name="host" placeholder="192.168.1.10 or myserver.com"
+                   value="{{ form.get('host', '') }}" required autofocus>
+          </div>
+          <div class="field-group" style="flex: 1; max-width: 110px;">
+            <label>Port</label>
+            <input type="number" name="port" value="{{ form.get('port', '22') }}">
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label>SSH username</label>
+          <input type="text" name="username" placeholder="root" value="{{ form.get('username', '') }}" required>
+        </div>
+
+        <div class="info-banner">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <span>No password is stored here. Anyone you grant access to will enter their
+            own SSH credentials the first time they open this server.</span>
+        </div>
+
+        <button type="submit" class="btn-primary-full">
+          Add to catalog
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </button>
+      </form>
+    </div>
+
+    <div class="login-shell-footer">
+      <span class="login-shell-footer-dot"></span>
+      Powered by <strong>F3 Devops Team</strong>
+    </div>
+  </div>
+</body>
+</html>

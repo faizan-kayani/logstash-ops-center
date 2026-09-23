@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Account &mdash; Logstash Monitoring</title>
+  <link rel="icon" type="image/jpeg" href="/static/logstash-logo.jpg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-card">
+      <a href="/servers" class="back-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        Back to servers
+      </a>
+
+      <div class="login-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>
+      </div>
+      <h1>{{ user.username }}</h1>
+      <p class="login-subheading">{{ "Admin" if user.role == "admin" else "User" }} account &mdash; change your password</p>
+
+      {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
+      {% if success %}<div class="info-banner" style="margin-bottom: 1rem;">{{ success }}</div>{% endif %}
+
+      <form method="post">
+        <div class="field-group">
+          <label>Current password</label>
+          <input type="password" name="current_password" autocomplete="current-password" required>
+        </div>
+        <div class="field-group">
+          <label>New password</label>
+          <input type="password" name="new_password" autocomplete="new-password" required minlength="8">
+        </div>
+        <div class="field-group">
+          <label>Confirm new password</label>
+          <input type="password" name="confirm_password" autocomplete="new-password" required minlength="8">
+        </div>
+        <button type="submit" class="btn-primary-full">Update password</button>
+      </form>
+    </div>
+
+    <div class="login-shell-footer">
+      <span class="login-shell-footer-dot"></span>
+      Powered by <strong>F3 Devops Team</strong>
+    </div>
+  </div>
+</body>
+</html>

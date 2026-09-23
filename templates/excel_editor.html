@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ sheet.name }} &mdash; Excel Sheet &mdash; Logstash Monitoring</title>
+  <link rel="icon" type="image/jpeg" href="/static/logstash-logo.jpg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    {% include "_sidebar.html" %}
+
+    <main class="main-content"><div class="servers-main">
+      <div class="servers-header-row">
+        <div>
+          <a href="{{ url_for('excel_sheets_list') }}" style="font-size: 0.8rem; color: var(--color-muted); text-decoration: none;">&larr; All sheets</a>
+          <form method="post" action="{{ url_for('excel_rename', sheet_id=sheet.id) }}" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem;">
+            <input type="text" name="name" value="{{ sheet.name }}" class="excel-name-input" style="font-size: 1.3rem; font-weight: 700; min-width: 260px;">
+            <button type="submit" class="btn-icon btn-primary-outline">Rename</button>
+          </form>
+        </div>
+        <div style="display: flex; gap: 0.6rem;">
+          <a href="{{ url_for('excel_export', sheet_id=sheet.id) }}" class="btn-icon btn-primary-outline">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Export .xlsx
+          </a>
+          <form method="post" action="{{ url_for('excel_delete', sheet_id=sheet.id) }}"
+                onsubmit="return confirm('Delete &quot;{{ sheet.name }}&quot;? This cannot be undone.');">
+            <button type="submit" class="btn-icon btn-danger-outline">Delete</button>
+          </form>
+        </div>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="info-banner {% if category == 'error' %}banner-error{% else %}banner-success{% endif %}" style="margin-bottom: 1rem;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+      {% endwith %}
+
+      <div class="excel-toolbar">
+        <div class="excel-toolbar-group">
+          <button type="button" id="excelAddRow" class="btn-icon btn-primary-outline">+ Row</button>
+          <button type="button" id="excelAddCol" class="btn-icon btn-primary-outline">+ Column</button>
+        </div>
+        <div class="excel-toolbar-group">
+          <form method="post" action="{{ url_for('excel_import_into', sheet_id=sheet.id) }}" enctype="multipart/form-data" id="excelImportForm">
+            <label class="btn-icon btn-primary-outline" style="cursor: pointer;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              Import .xlsx
+              <input type="file" name="file" accept=".xlsx,.xlsm" id="excelImportInput" style="display: none;">
+            </label>
+          </form>
+        </div>
+        <div class="excel-toolbar-group">
+          <span class="excel-toolbar-swatch">
+            Fill
+            <input type="color" id="excelBgPicker" value="#ffffff" title="Background color for the selected cell(s)">
+          </span>
+          <span class="excel-toolbar-swatch">
+            Text
+            <input type="color" id="excelFgPicker" value="#14161f" title="Text color for the selected cell(s)">
+          </span>
+          <button type="button" id="excelClearColors" class="btn-icon btn-primary-outline">Clear color</button>
+        </div>
+        <div class="excel-toolbar-group">
+          <span style="font-size: 0.78rem; color: var(--color-muted);">Click a cell, or Shift+Click to select a range.</span>
+        </div>
+        <button type="button" id="excelSaveBtn" class="btn-filled-primary" style="margin-left: auto;">Save</button>
+        <span id="excelSaveStatus" class="excel-save-status"></span>
+      </div>
+
+      <div class="excel-grid-wrap">
+        <table class="excel-table" id="excelGrid"></table>
+      </div>
+    </div></main>
+  </div>
+
+  <script>
+    (function () {
+      const initial = {{ grid | tojson }};
+      let grid = initial.rows && initial.rows.length ? initial.rows : [[{ v: "", bg: null, fg: null }]];
+
+      const importInput = document.getElementById("excelImportInput");
+      if (importInput) {
+        importInput.addEventListener("change", () => {
+          if (!importInput.files.length) return;
+          if (confirm("Importing will replace all current content in this sheet. Continue?")) {
+            document.getElementById("excelImportForm").submit();
+          } else {
+            importInput.value = "";
+          }
+        });
+      }
+
+      const table = document.getElementById("excelGrid");
+      const saveBtn = document.getElementById("excelSaveBtn");
+      const saveStatus = document.getElementById("excelSaveStatus");
+      const bgPicker = document.getElementById("excelBgPicker");
+      const fgPicker = document.getElementById("excelFgPicker");
+
+      let selection = { r1: 0, c1: 0, r2: 0, c2: 0 };
+      let anchor = { r: 0, c: 0 };
+
+      function colLabel(index) {
+        // 0 -> A, 25 -> Z, 26 -> AA, ...
+        let label = "";
+        let n = index;
+        do {
+          label = String.fromCharCode(65 + (n % 26)) + label;
+          n = Math.floor(n / 26) - 1;
+        } while (n >= 0);
+        return label;
+      }
+
+      function colCount() {
+        return grid.reduce((max, row) => Math.max(max, row.length), 0);
+      }
+
+      function normalizeSelection() {
+        return {
+          r1: Math.min(selection.r1, selection.r2),
+          r2: Math.max(selection.r1, selection.r2),
+          c1: Math.min(selection.c1, selection.c2),
+          c2: Math.max(selection.c1, selection.c2),
+        };
+      }
+
+      function renderTable() {
+        const cols = colCount();
+        table.innerHTML = "";
+
+        const thead = document.createElement("tr");
+        const corner = document.createElement("th");
+        corner.className = "excel-corner";
+        thead.appendChild(corner);
+        for (let c = 0; c < cols; c++) {
+          const th = document.createElement("th");
+          th.className = "excel-colhead";
+          th.textContent = colLabel(c);
+          thead.appendChild(th);
+        }
+        table.appendChild(thead);
+
+        grid.forEach((row, r) => {
+          const tr = document.createElement("tr");
+          const rowHead = document.createElement("th");
+          rowHead.className = "excel-rowhead";
+          rowHead.textContent = r + 1;
+          tr.appendChild(rowHead);
+
+          for (let c = 0; c < cols; c++) {
+            const cell = row[c] || { v: "", bg: null, fg: null };
+            const td = document.createElement("td");
+            td.contentEditable = "true";
+            td.className = "excel-cell";
+            td.dataset.r = r;
+            td.dataset.c = c;
+            td.textContent = cell.v || "";
+            if (cell.bg) td.style.backgroundColor = cell.bg;
+            if (cell.fg) td.style.color = cell.fg;
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        });
+
+        applySelectionHighlight();
+      }
+
+      function applySelectionHighlight() {
+        const sel = normalizeSelection();
+        table.querySelectorAll(".excel-cell").forEach((td) => {
+          const r = Number(td.dataset.r);
+          const c = Number(td.dataset.c);
+          const inRange = r >= sel.r1 && r <= sel.r2 && c >= sel.c1 && c <= sel.c2;
+          td.classList.toggle("is-selected", inRange);
+        });
+      }
+
+      function selectedCells() {
+        const sel = normalizeSelection();
+        const cells = [];
+        table.querySelectorAll(".excel-cell").forEach((td) => {
+          const r = Number(td.dataset.r);
+          const c = Number(td.dataset.c);
+          if (r >= sel.r1 && r <= sel.r2 && c >= sel.c1 && c <= sel.c2) cells.push(td);
+        });
+        return cells;
+      }
+
+      table.addEventListener("mousedown", (e) => {
+        const td = e.target.closest(".excel-cell");
+        if (!td) return;
+        const r = Number(td.dataset.r);
+        const c = Number(td.dataset.c);
+        if (e.shiftKey) {
+          selection = { r1: anchor.r, c1: anchor.c, r2: r, c2: c };
+        } else {
+          anchor = { r, c };
+          selection = { r1: r, c1: c, r2: r, c2: c };
+        }
+        applySelectionHighlight();
+      });
+
+      document.getElementById("excelAddRow").addEventListener("click", () => {
+        syncGridFromDom();
+        grid.push(Array.from({ length: colCount() || 1 }, () => ({ v: "", bg: null, fg: null })));
+        renderTable();
+      });
+
+      document.getElementById("excelAddCol").addEventListener("click", () => {
+        syncGridFromDom();
+        grid.forEach((row) => row.push({ v: "", bg: null, fg: null }));
+        renderTable();
+      });
+
+      bgPicker.addEventListener("input", () => {
+        selectedCells().forEach((td) => { td.style.backgroundColor = bgPicker.value; });
+      });
+
+      fgPicker.addEventListener("input", () => {
+        selectedCells().forEach((td) => { td.style.color = fgPicker.value; });
+      });
+
+      document.getElementById("excelClearColors").addEventListener("click", () => {
+        selectedCells().forEach((td) => {
+          td.style.backgroundColor = "";
+          td.style.color = "";
+        });
+      });
+
+      function rgbToHex(rgb) {
+        if (!rgb) return null;
+        const m = rgb.match(/\d+/g);
+        if (!m || m.length < 3) return null;
+        return "#" + m.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, "0")).join("");
+      }
+
+      function syncGridFromDom() {
+        const rows = table.querySelectorAll("tr:not(:first-child)");
+        const newGrid = [];
+        rows.forEach((tr) => {
+          const row = [];
+          tr.querySelectorAll(".excel-cell").forEach((td) => {
+            row.push({
+              v: td.textContent,
+              bg: rgbToHex(td.style.backgroundColor),
+              fg: rgbToHex(td.style.color),
+            });
+          });
+          newGrid.push(row);
+        });
+        grid = newGrid;
+      }
+
+      saveBtn.addEventListener("click", () => {
+        syncGridFromDom();
+        saveStatus.textContent = "Saving...";
+        saveStatus.className = "excel-save-status";
+        fetch(window.location.pathname + "/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: grid }),
+        })
+          .then((r) => r.json().then((body) => ({ ok: r.ok, body })))
+          .then(({ ok, body }) => {
+            if (ok) {
+              saveStatus.textContent = "Saved.";
+              saveStatus.className = "excel-save-status is-success";
+            } else {
+              saveStatus.textContent = body.error || "Save failed.";
+              saveStatus.className = "excel-save-status is-error";
+            }
+          })
+          .catch(() => {
+            saveStatus.textContent = "Save failed -- network error.";
+            saveStatus.className = "excel-save-status is-error";
+          });
+      });
+
+      renderTable();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logstash Monitoring</title>
+  <link rel="icon" type="image/jpeg" href="/static/logstash-logo.jpg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-shell">
+
+    {% include "_sidebar.html" %}
+
+    <main class="main-content">
+      <div id="errorBox" class="alert-banner d-none"></div>
+
+      <section id="servicesView" class="view">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Start / Stop / Restart Services</h2>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <span class="count" id="serviceCount"></span>
+              <button id="refreshBtn" class="btn-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="search-wrap">
+            <span class="search-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            <input type="text" id="searchInput" placeholder="Search services by name...">
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Status</th>
+                  <th>Description</th>
+                  <th class="text-end">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="serviceRows">
+                <tr class="empty-row"><td colspan="4">Loading services...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="serviceHistoryView" class="view d-none">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Start / Stop / Restart History</h2>
+            <button id="historyRefreshBtn" class="btn-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              Refresh
+            </button>
+          </div>
+          <p style="margin: 0 0 0.75rem; font-size: 0.82rem; color: var(--color-muted);">
+            Every start/stop/restart this dashboard has performed on this server, who did it, and whether it succeeded.
+          </p>
+
+          <div class="filter-toolbar">
+            <span class="filter-toolbar-label">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+              Filter
+            </span>
+            <input type="text" id="historyServiceFilter" list="historyServiceOptions" placeholder="Search service&hellip;" autocomplete="off">
+            <datalist id="historyServiceOptions"></datalist>
+            <input type="datetime-local" id="historyStart" title="From">
+            <input type="datetime-local" id="historyEnd" title="To">
+            <button id="historyLoadBtn" class="btn-icon" title="Load actions in this range">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              Load
+            </button>
+            <span class="filter-active-note d-none" id="historyFilterActiveNote"></span>
+          </div>
+          <div class="quick-filters" id="historyQuickRanges">
+            <button type="button" class="chip" data-minutes="1440">Last 24 hours</button>
+            <button type="button" class="chip" data-minutes="10080">Last 7 days</button>
+            <button type="button" class="chip active" data-minutes="21600">Last 15 days</button>
+            <button type="button" class="chip" data-minutes="43200">Last 30 days</button>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Service</th>
+                  <th>Action</th>
+                  <th>Result</th>
+                  <th>By</th>
+                </tr>
+              </thead>
+              <tbody id="historyRows">
+                <tr class="empty-row"><td colspan="5">Loading&hellip;</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {% if can_view_pipeline_status %}
+      <section id="logstashStatusView" class="view d-none">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Pipeline Status</h2>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <span id="lsHealthBadge" class="status-badge status-stopped">Unknown</span>
+              <button id="lsRefreshBtn" class="btn-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                Refresh
+              </button>
+              <label class="auto-refresh-toggle">
+                <input type="checkbox" id="lsAutoRefresh">
+                Auto-refresh (10s)
+              </label>
+            </div>
+          </div>
+
+          <div class="stat-cards" id="lsStatCards"></div>
+
+          <div class="filter-toolbar">
+            <span class="filter-toolbar-label">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+              Filter
+            </span>
+            <input type="text" id="lsHistoryPipeline" list="lsPipelineOptions" placeholder="Search pipeline&hellip;" autocomplete="off">
+            <datalist id="lsPipelineOptions"></datalist>
+            <input type="datetime-local" id="lsHistoryStart" title="From">
+            <input type="datetime-local" id="lsHistoryEnd" title="To">
+            <button id="lsHistoryLoadBtn" class="btn-icon" title="Load snapshots recorded in this range">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              Load
+            </button>
+            <span class="filter-active-note d-none" id="lsFilterActiveNote"></span>
+          </div>
+          <div class="quick-filters" id="lsHistoryQuickRanges">
+            <button type="button" class="chip" data-minutes="15">Last 15 min</button>
+            <button type="button" class="chip" data-minutes="60">Last 1 hour</button>
+            <button type="button" class="chip" data-minutes="1440">Last 24 hours</button>
+            <button type="button" class="chip" data-minutes="10080">Last 7 days</button>
+            <button type="button" class="chip" id="lsHistoryClearBtn">Back to live</button>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Pipeline</th>
+                  <th>Status</th>
+                  <th>Workers</th>
+                  <th>In</th>
+                  <th>Filtered</th>
+                  <th>Out</th>
+                  <th>Rate (evt/s)</th>
+                  <th>Queue</th>
+                  <th>Reload Failures</th>
+                </tr>
+              </thead>
+              <tbody id="lsPipelineRows">
+                <tr class="empty-row"><td colspan="10">Click Refresh to load pipeline stats.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      {% endif %}
+
+      {% if can_view_pipeline_errors %}
+      <section id="logstashErrorsView" class="view d-none">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Reload / Config Errors</h2>
+          </div>
+          <p style="margin: 0 0 0.75rem; font-size: 0.82rem; color: var(--color-muted);">
+            Pipelines where Logstash's own config reload failed -- populated from the same live fetch as
+            Pipeline Status, so opening this page (or Pipeline Status, if you have it) refreshes it.
+          </p>
+          <pre id="lsErrorsBox" class="log-output" style="height: auto; min-height: 4rem;">No reload/config errors detected.</pre>
+        </div>
+      </section>
+      {% endif %}
+
+      {% if can_view_pipeline_es_errors %}
+      <section id="logstashEsErrorsView" class="view d-none">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Elasticsearch Errors</h2>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <button id="lsEsErrorsRefreshBtn" class="btn-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                Refresh
+              </button>
+              <label class="auto-refresh-toggle">
+                <input type="checkbox" id="lsEsErrorsAutoRefresh">
+                Auto-refresh (30s)
+              </label>
+            </div>
+          </div>
+          <p style="margin: 0 0 0.75rem; font-size: 0.82rem; color: var(--color-muted);">
+            Reads Logstash's own log file (read-only &mdash; grep, never modified) for Elasticsearch-output
+            bulk request rejections, e.g. <code>413 Payload Too Large</code> or <code>429 Too Many Requests</code>
+            &mdash; errors the Monitoring API above doesn't surface, since Logstash retries them in the
+            background instead of failing the pipeline outright.
+          </p>
+
+          <div class="log-controls">
+            <input type="text" id="lsEsErrorsPathInput" value="/var/log/logstash/logstash-plain.log" placeholder="/path/to/logfile">
+            <button id="lsEsErrorsLoadBtn" class="btn-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              Load
+            </button>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Pipeline</th>
+                  <th>Elasticsearch Host</th>
+                  <th>Code</th>
+                  <th>Count</th>
+                  <th>First seen</th>
+                  <th>Last seen</th>
+                </tr>
+              </thead>
+              <tbody id="lsEsErrorRows">
+                <tr class="empty-row"><td colspan="6">Click Refresh to check for Elasticsearch rejections.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="field-hint" style="margin: 0.5rem 0 0;">Click a row to see a sample log line.</p>
+          <pre id="lsEsErrorSample" class="log-output d-none" style="height: auto; min-height: 3rem; margin-top: 0.5rem;"></pre>
+        </div>
+      </section>
+      {% endif %}
+
+      {% if can_view_pipeline_logs %}
+      <section id="logstashLogsView" class="view d-none">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Pipeline Logs</h2>
+          </div>
+
+          <div class="log-controls">
+            <input type="text" id="lsLogPathInput" value="/var/log/logstash/logstash-plain.log" placeholder="/path/to/logfile">
+            <input type="text" id="lsGrepInput" placeholder="grep -E pattern, e.g. ERROR|Exception">
+            <select id="lsLogLinesSelect">
+              <option value="100">Last 100 lines</option>
+              <option value="200" selected>Last 200 lines</option>
+              <option value="500">Last 500 lines</option>
+              <option value="1000">Last 1000 lines</option>
+            </select>
+            <button id="lsLoadLogBtn" class="btn-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              Load
+            </button>
+            <label class="auto-refresh-toggle">
+              <input type="checkbox" id="lsAutoRefreshLog">
+              Auto-refresh (5s)
+            </label>
+          </div>
+
+          <div class="quick-filters" id="lsGrepQuickFilters">
+            <button type="button" class="chip" data-pattern="ERROR|FATAL">Errors</button>
+            <button type="button" class="chip" data-pattern="WARN">Warnings</button>
+            <button type="button" class="chip" data-pattern="Exception|Traceback">Exceptions</button>
+            <button type="button" class="chip" data-pattern="_grokparsefailure|_dateparsefailure">Parse failures</button>
+            <button type="button" class="chip" data-pattern="">Clear filter</button>
+          </div>
+
+          <div class="filter-toolbar">
+            <span class="filter-toolbar-label">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              Date/time
+            </span>
+            <input type="datetime-local" id="lsLogDateStart" title="From">
+            <input type="datetime-local" id="lsLogDateEnd" title="To">
+            <button type="button" id="lsLogDateClearBtn" class="btn-icon">Clear date filter</button>
+            <span class="filter-active-note d-none" id="lsLogDateActiveNote"></span>
+          </div>
+          <p class="field-hint" style="margin: -0.5rem 0 0.75rem;">
+            Filters the lines already loaded above by their own timestamp &mdash; doesn't fetch further back than
+            "Last N lines" already covers. Increase that if the date you want isn't showing up.
+          </p>
+
+          <pre id="lsLogOutput" class="log-output">Enter a pattern (optional) and click Load.</pre>
+        </div>
+      </section>
+      {% endif %}
+    </main>
+
+  </div>
+
+  <script>
+    window.PROTECTED_SERVICES = {{ protected | tojson }};
+    window.SERVER_ID = {{ server_id | tojson }};
+    window.SERVER_HOST = {{ host | tojson }};
+    window.CAN_CONTROL = {{ can_control | tojson }};
+    window.CONTROLLABLE_SERVICES = {{ controllable_services | tojson }};
+  </script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

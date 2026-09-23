@@ -1,0 +1,50 @@
+# --- Append/merge into your node-level logstash.yml ---
+
+# Node identity (helps when reading multi-node monitoring output)
+node.name: ls-node-01
+
+# Persistent queue: buffers events on disk between input and filter/output
+# so a downstream (Elasticsearch) outage doesn't cause in-memory loss and
+# gives you a concrete signal (queue size growing) for backpressure.
+queue.type: persisted
+queue.max_bytes: 4gb
+queue.checkpoint.writes: 1024
+
+# Dead Letter Queue: events an output (e.g. Elasticsearch) explicitly
+# rejects (mapping errors, 4xx) are written here instead of being dropped.
+dead_letter_queue.enable: true
+dead_letter_queue.max_bytes: 1gb
+path.dead_letter_queue: /var/lib/logstash/dead_letter_queue
+
+# Monitoring API (always available on the Logstash node itself,
+# independent of X-Pack/Elasticsearch monitoring):
+# Pinned to a single port (not a range) -- a range means Logstash silently
+# binds to the next free port if 9600 is taken, which then no longer matches
+# the dashboard's default port field and shows as "Unreachable".
+#
+# api.http.host accepts exactly ONE address, not a list -- it cannot be set
+# to loopback and the external IP separately, and this value is left as
+# whatever the target host already has (127.0.0.1, 0.0.0.0, or its own
+# external IP all work). The dashboard's SSHManager.logstash_stats() tries
+# curling http://localhost:<port>/ first and, if that gets no response (e.g.
+# api.http.host is pinned to this host's own external IP rather than
+# loopback), automatically retries against this host's own IP before giving
+# up -- so no logstash.yml edit or restart is required on a production node
+# just to make the dashboard's Logstash page work. Prefer 127.0.0.1 here
+# (not 0.0.0.0) unless something ELSE besides this dashboard also needs to
+# reach the API over the network -- api.auth.type is unset (== "none") below,
+# so 0.0.0.0 would expose this unauthenticated API to the whole network.
+api.enabled: true
+api.http.host: 127.0.0.1
+api.http.port: 9600
+
+# If shipping node metrics into an Elasticsearch monitoring cluster too:
+# xpack.monitoring.enabled: true
+# xpack.monitoring.elasticsearch.hosts: ["https://es-node1:9200"]
+# xpack.monitoring.elasticsearch.username: "logstash_system"
+# xpack.monitoring.elasticsearch.password: "${MONITORING_PASSWORD}"
+
+# Worker / batch tuning that affects in/out throughput:
+pipeline.workers: 4
+pipeline.batch.size: 250
+pipeline.batch.delay: 50
